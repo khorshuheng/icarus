@@ -615,8 +615,7 @@ public sealed class AgentRuntime
             key = _apiKeyResolver?.Invoke(info);
             if (string.IsNullOrEmpty(key))
             {
-                Emit(new ErrorEvent(
-                    $"no API key for provider '{info.Name}': set {info.ApiKeyEnv} or pass --api-key"));
+                Emit(new ErrorEvent(ProviderBuilder.MissingKey(info)));
                 return;
             }
         }

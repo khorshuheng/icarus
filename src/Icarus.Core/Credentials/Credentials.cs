@@ -6,6 +6,7 @@ namespace Icarus.Core.Credentials;
 /// <summary>A best-effort secret store (ICARUS-102). Linux-only.</summary>
 public interface ICredentialStore
 {
+    /// <summary>Store a key; throws <see cref="CredentialException"/> when the keyring refuses it.</summary>
     void Store(string provider, string key);
 
     string? Get(string provider);
@@ -13,10 +14,15 @@ public interface ICredentialStore
     bool Delete(string provider);
 }
 
+/// <summary>A keyring failure that should be surfaced to the user.</summary>
+public sealed class CredentialException(string message) : Exception(message);
+
 /// <summary>A store that does nothing (no Secret Service available).</summary>
 public sealed class NullCredentialStore : ICredentialStore
 {
-    public void Store(string provider, string key) { }
+    public void Store(string provider, string key) => throw new CredentialException(
+        "no OS keyring is available on this system (the libsecret `secret-tool` CLI was not found); "
+        + "use --api-key or the provider environment variable instead");
 
     public string? Get(string provider) => null;
 
@@ -38,19 +44,28 @@ public sealed class SecretToolCredentialStore : ICredentialStore
     public static ICredentialStore CreateDefault() =>
         FindSecretTool() is not null ? new SecretToolCredentialStore() : new NullCredentialStore();
 
-    public void Store(string provider, string key) =>
-        Run(["store", $"--label=icarus:{provider}", "service", Service, "provider", provider], key);
+    public void Store(string provider, string key)
+    {
+        var (code, _, error) = Run(
+            ["store", $"--label=icarus:{provider}", "service", Service, "provider", provider], key);
+        if (code != 0)
+        {
+            throw new CredentialException(
+                $"could not store the API key for '{provider}' in the keyring: "
+                + (error.Length > 0 ? error : $"secret-tool exited with code {code}"));
+        }
+    }
 
     public string? Get(string provider)
     {
-        var output = Run(["lookup", "service", Service, "provider", provider], stdin: null);
-        return string.IsNullOrEmpty(output) ? null : output;
+        var (code, output, _) = Run(["lookup", "service", Service, "provider", provider], stdin: null);
+        return code == 0 && output.Length > 0 ? output : null;
     }
 
     public bool Delete(string provider)
     {
-        Run(["clear", "service", Service, "provider", provider], stdin: null);
-        return true;
+        var (code, _, _) = Run(["clear", "service", Service, "provider", provider], stdin: null);
+        return code == 0;
     }
 
     private static string? FindSecretTool()
@@ -81,12 +96,12 @@ public sealed class SecretToolCredentialStore : ICredentialStore
         return null;
     }
 
-    private static string Run(IReadOnlyList<string> arguments, string? stdin)
+    private static (int Code, string Output, string Error) Run(IReadOnlyList<string> arguments, string? stdin)
     {
         var tool = FindSecretTool();
         if (tool is null)
         {
-            return string.Empty;
+            return (127, string.Empty, "secret-tool not found");
         }
 
         var startInfo = new ProcessStartInfo
@@ -105,7 +120,7 @@ public sealed class SecretToolCredentialStore : ICredentialStore
         using var process = Process.Start(startInfo);
         if (process is null)
         {
-            return string.Empty;
+            return (127, string.Empty, "secret-tool could not be started");
         }
 
         if (stdin is not null)
@@ -115,8 +130,9 @@ public sealed class SecretToolCredentialStore : ICredentialStore
         }
 
         var output = process.StandardOutput.ReadToEnd();
+        var error = process.StandardError.ReadToEnd();
         process.WaitForExit();
-        return output.TrimEnd('\n', '\r');
+        return (process.ExitCode, output.TrimEnd('\n', '\r'), error.TrimEnd('\n', '\r'));
     }
 }
 
@@ -127,7 +143,10 @@ public sealed class SecretToolCredentialStore : ICredentialStore
 public static class Credentials
 {
     /// <summary>The keyring store; replaceable for tests.</summary>
-    public static ICredentialStore Store { get; set; } = SecretToolCredentialStore.CreateDefault();
+    public static ICredentialStore Keyring { get; set; } = SecretToolCredentialStore.CreateDefault();
+
+    /// <summary>Whether a real OS keyring is available on this system.</summary>
+    public static bool KeyringAvailable => Keyring is not NullCredentialStore;
 
     public static string? Resolve(ProviderInfo provider, string? flag)
     {
@@ -142,6 +161,6 @@ public static class Credentials
             return fromEnvironment;
         }
 
-        return provider.RequiresKey ? Store.Get(provider.Name) : null;
+        return provider.RequiresKey ? Keyring.Get(provider.Name) : null;
     }
 }

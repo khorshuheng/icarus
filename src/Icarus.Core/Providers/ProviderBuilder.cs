@@ -2,6 +2,8 @@ using Amazon;
 using Amazon.BedrockRuntime;
 using Anthropic;
 using Microsoft.Extensions.AI;
+using OpenAI;
+using System.ClientModel;
 using Icarus.Core.Credentials;
 using Icarus.Core.Config;
 using Icarus.Core.Provider;
@@ -26,6 +28,7 @@ public static class ProviderBuilder
         "fake" => new FakeProvider([]),
         "bedrock" => BuildBedrock(config),
         "anthropic" => BuildAnthropic(config),
+        "deepseek" => BuildDeepSeek(config),
         _ => throw new ConfigException($"unknown provider '{config.Provider.Name}'"),
     };
 
@@ -55,7 +58,7 @@ public static class ProviderBuilder
     {
         if (string.IsNullOrEmpty(config.ApiKey))
         {
-            throw new ConfigException("no API key for provider 'anthropic'");
+            throw new ConfigException(MissingKey(config.Provider));
         }
 
         var client = new AnthropicClient
@@ -66,6 +69,26 @@ public static class ProviderBuilder
 
         return Wrap(client.AsIChatClient(config.Model, config.MaxTokens), config);
     }
+
+    /// <summary>DeepSeek is OpenAI-compatible, so it rides the official OpenAI SDK.</summary>
+    private static IProvider BuildDeepSeek(AgentConfig config)
+    {
+        if (string.IsNullOrEmpty(config.ApiKey))
+        {
+            throw new ConfigException(MissingKey(config.Provider));
+        }
+
+        var options = new OpenAIClientOptions { Endpoint = new Uri(config.EffectiveBaseUrl) };
+        var client = new OpenAIClient(new ApiKeyCredential(config.ApiKey), options);
+        return Wrap(client.GetChatClient(config.Model).AsIChatClient(), config);
+    }
+
+    /// <summary>An actionable "no key" message, aware of keyring availability.</summary>
+    public static string MissingKey(ProviderInfo provider) =>
+        $"no API key for provider '{provider.Name}': set {provider.ApiKeyEnv} or pass --api-key"
+        + (CredentialResolver.KeyringAvailable
+            ? "; /login stores one in the OS keyring"
+            : "; no OS keyring is available on this system");
 
     private static IProvider Wrap(Microsoft.Extensions.AI.IChatClient client, AgentConfig config) =>
         new MeaiProvider(new MeaiProviderOptions

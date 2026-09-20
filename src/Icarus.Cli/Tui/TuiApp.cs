@@ -1,5 +1,6 @@
 using System.Text;
 using Icarus.Cli.Ui;
+using Icarus.Core.Credentials;
 using Icarus.Core.Provider;
 using Icarus.Core.Runtime;
 using Icarus.Core.Session;
@@ -8,6 +9,7 @@ using Terminal.Gui.Drivers;
 using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
+using CredentialResolver = Icarus.Core.Credentials.Credentials;
 
 namespace Icarus.Cli.Tui;
 
@@ -31,6 +33,7 @@ public static class TuiApp
         string? savedPath = null;
         Picker? picker = null;
         Action<int>? pickerApply = null;
+        var loginMode = false;
 
         Application.Init();
         try
@@ -125,6 +128,32 @@ public static class TuiApp
             {
                 var line = (input.Value ?? string.Empty).Trim();
                 input.Value = string.Empty;
+
+                if (loginMode)
+                {
+                    loginMode = false;
+                    input.Secret = false;
+                    if (line.Length == 0)
+                    {
+                        model.PushNotice("(login cancelled)");
+                    }
+                    else
+                    {
+                        try
+                        {
+                            CredentialResolver.Keyring.Store(runtime.ProviderInfo.Name, line);
+                            model.PushNotice($"stored an API key for provider '{runtime.ProviderInfo.Name}'");
+                        }
+                        catch (CredentialException error)
+                        {
+                            model.PushNotice($"login failed: {error.Message}");
+                        }
+                    }
+
+                    Refresh();
+                    return;
+                }
+
                 if (line.Length == 0)
                 {
                     return;
@@ -155,6 +184,13 @@ public static class TuiApp
                 {
                     case SlashCommandKind.Help:
                         model.PushNotice(HelpText());
+                        break;
+                    case SlashCommandKind.Login:
+                        loginMode = true;
+                        input.Secret = true;
+                        input.SetFocus();
+                        model.PushNotice(
+                            $"paste the API key for provider '{runtime.ProviderInfo.Name}' and press Enter (Esc cancels)");
                         break;
                     case SlashCommandKind.Clear:
                         runtime.Clear();
@@ -289,6 +325,20 @@ public static class TuiApp
 
             Application.KeyDown += (_, key) =>
             {
+                if (loginMode)
+                {
+                    if (key.KeyCode == KeyCode.Esc)
+                    {
+                        loginMode = false;
+                        input.Secret = false;
+                        model.PushNotice("(login cancelled)");
+                        key.Handled = true;
+                        Refresh();
+                    }
+
+                    return;
+                }
+
                 if (picker is not null)
                 {
                     switch (key.KeyCode)

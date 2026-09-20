@@ -47,12 +47,16 @@ public static class Providers
     public static readonly ProviderInfo Anthropic =
         new("anthropic", "https://api.anthropic.com", "ANTHROPIC_API_KEY", EffortStyle.AnthropicThinking);
 
+    /// <summary>DeepSeek, via its OpenAI-compatible endpoint (official OpenAI SDK).</summary>
+    public static readonly ProviderInfo DeepSeek =
+        new("deepseek", "https://api.deepseek.com/v1", "DEEPSEEK_API_KEY", EffortStyle.None);
+
     /// <summary>The scripted offline provider.</summary>
     public static readonly ProviderInfo Fake =
         new("fake", string.Empty, null, EffortStyle.None);
 
     /// <summary>Every registered provider, in registry order.</summary>
-    public static readonly IReadOnlyList<ProviderInfo> All = [Bedrock, Anthropic, Fake];
+    public static readonly IReadOnlyList<ProviderInfo> All = [Bedrock, Anthropic, DeepSeek, Fake];
 
     /// <summary>The default provider (the first registry row).</summary>
     public static ProviderInfo Default => All[0];

@@ -23,6 +23,7 @@ public class EffortCapabilityTests
     [InlineData("bedrock", "anthropic.claude-3-5-sonnet-20241022-v2:0", EffortStyle.None)]
     [InlineData("bedrock", "meta.llama3-70b-instruct-v1:0", EffortStyle.None)]
     [InlineData("bedrock", "amazon.titan-text-express-v1", EffortStyle.None)]
+    [InlineData("deepseek", "deepseek-v4-flash", EffortStyle.None)]
     [InlineData("fake", "anything", EffortStyle.None)]
     public void Resolves_effort_per_model(string providerName, string model, EffortStyle expected)
     {
@@ -238,10 +239,10 @@ public class CredentialsTests
     [Fact]
     public void Flag_beats_env_beats_keyring()
     {
-        var previous = CredentialResolver.Store;
+        var previous = CredentialResolver.Keyring;
         var store = new MemoryStore();
         store.Store("anthropic", "keyring-key");
-        CredentialResolver.Store = store;
+        CredentialResolver.Keyring = store;
         var provider = Icarus.Core.Config.Providers.ByName("anthropic")!;
 
         try
@@ -255,7 +256,7 @@ public class CredentialsTests
         finally
         {
             Environment.SetEnvironmentVariable("ANTHROPIC_API_KEY", null);
-            CredentialResolver.Store = previous;
+            CredentialResolver.Keyring = previous;
         }
     }
 
@@ -265,6 +266,29 @@ public class CredentialsTests
         var bedrock = Icarus.Core.Config.Providers.ByName("bedrock")!;
 
         Assert.Null(CredentialResolver.Resolve(bedrock, null));
+    }
+
+    [Fact]
+    public void The_null_store_refuses_to_store_loudly()
+    {
+        Assert.Throws<CredentialException>(() => new NullCredentialStore().Store("deepseek", "k"));
+    }
+
+    [Fact]
+    public void Keyring_availability_reflects_the_store()
+    {
+        var previous = CredentialResolver.Keyring;
+        try
+        {
+            CredentialResolver.Keyring = new NullCredentialStore();
+            Assert.False(CredentialResolver.KeyringAvailable);
+            CredentialResolver.Keyring = new MemoryStore();
+            Assert.True(CredentialResolver.KeyringAvailable);
+        }
+        finally
+        {
+            CredentialResolver.Keyring = previous;
+        }
     }
 }
 
@@ -292,6 +316,24 @@ public class ProviderBuilderTests
         // Constructing the official clients must not touch the network.
         Assert.IsType<MeaiProvider>(ProviderBuilder.Build(Config("bedrock", "anthropic.claude-sonnet-4-20250514-v1:0")));
         Assert.IsType<MeaiProvider>(ProviderBuilder.Build(Config("anthropic", "claude-sonnet-4-20250514", "test-key")));
+    }
+
+    [Fact]
+    public void Builds_the_deepseek_backend_offline()
+    {
+        var provider = ProviderBuilder.Build(Config("deepseek", "deepseek-v4-flash", "test-key"));
+
+        Assert.IsType<MeaiProvider>(provider);
+    }
+
+    [Fact]
+    public void Deepseek_without_a_key_fails_fast()
+    {
+        var error = Assert.Throws<ConfigException>(
+            () => ProviderBuilder.Build(Config("deepseek", "deepseek-v4-flash")));
+
+        Assert.Contains("no API key for provider 'deepseek'", error.Message);
+        Assert.Contains("DEEPSEEK_API_KEY", error.Message);
     }
 
     [Fact]

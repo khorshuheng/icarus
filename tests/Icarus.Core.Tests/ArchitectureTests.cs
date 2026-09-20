@@ -29,9 +29,10 @@ public class ArchitectureTests
     [Fact]
     public void Core_uses_only_official_provider_clients()
     {
-        // The official AWS SDK and Anthropic SDK, and no community wrappers.
+        // The official AWS SDK, Anthropic SDK and OpenAI SDK; no community wrappers.
         Assert.Contains("AWSSDK.BedrockRuntime", CoreReferences);
         Assert.Contains("Anthropic", CoreReferences);
+        Assert.Contains("OpenAI", CoreReferences);
         Assert.DoesNotContain("Anthropic.SDK", CoreReferences);
         Assert.DoesNotContain("Anthropic.Extensions.AI", CoreReferences);
         Assert.DoesNotContain("SemanticKernel", CoreReferences);
