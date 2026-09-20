@@ -36,6 +36,7 @@ public static class TuiApp
         Picker? picker = null;
         Action<int>? pickerApply = null;
         var loginMode = false;
+        var modelPickerPending = false;
 
         Application.Init();
         try
@@ -79,6 +80,14 @@ public static class TuiApp
             transcript.SetScheme(scheme);
             input.SetScheme(scheme);
             footer.SetScheme(scheme);
+
+            // ICARUS-108: a live slash-command dropdown while typing `/token`.
+            input.Autocomplete = new TextFieldAutocomplete
+            {
+                SuggestionGenerator = new SlashSuggestionGenerator(),
+                MaxHeight = 8,
+                Scheme = scheme,
+            };
 
             window.Add(transcript);
             window.Add(input);
@@ -170,6 +179,32 @@ public static class TuiApp
                     return;
                 }
 
+                // Accept a unique command prefix on Enter even if the popup was
+                // dismissed (e.g. `/mod` → `/model `).
+                if (line.StartsWith('/') && !line.Contains(' '))
+                {
+                    var name = line[1..];
+                    var exact = SlashCommands.All.Any(s =>
+                        s.Name == name || s.Aliases.Contains(name, StringComparer.Ordinal));
+                    if (!exact)
+                    {
+                        var matches = SlashCommands.Complete(line);
+                        if (matches.Count == 1)
+                        {
+                            input.Value = "/" + matches[0].Name + " ";
+                            Refresh();
+                            return;
+                        }
+
+                        if (matches.Count > 1)
+                        {
+                            model.PushNotice("commands: " + string.Join(", ", matches.Select(m => "/" + m.Name)));
+                            Refresh();
+                            return;
+                        }
+                    }
+                }
+
                 switch (SlashCommands.Parse(line))
                 {
                     case LineAction.Message message when model.Busy:
@@ -230,7 +265,19 @@ public static class TuiApp
                         runtime.SetModel(command.Argument);
                         break;
                     case SlashCommandKind.Model:
-                        OpenModelPicker();
+                        if (model.Models.Count > 0)
+                        {
+                            OpenPicker(
+                                new Picker("model", model.Models.ToList()),
+                                index => runtime.SetModel(model.Models[index]));
+                        }
+                        else
+                        {
+                            modelPickerPending = true;
+                            runtime.ListModels();
+                            model.PushNotice("fetching models…");
+                        }
+
                         break;
                     case SlashCommandKind.Provider when command.Argument.Length > 0:
                         runtime.SetProvider(command.Argument);
@@ -299,19 +346,6 @@ public static class TuiApp
                 {
                     runtime.Prompt(message);
                 }
-            }
-
-            void OpenModelPicker()
-            {
-                var models = runtime.Models;
-                if (models.Count == 0)
-                {
-                    runtime.ListModels();
-                    model.PushNotice("no models available; type /model <name> or provider listing may be unsupported");
-                    return;
-                }
-
-                OpenPicker(new Picker("model", models.ToList()), index => runtime.SetModel(models[index]));
             }
 
             void OpenResumePicker()
@@ -427,6 +461,15 @@ public static class TuiApp
                 {
                     model.Apply(@event);
                     changed = true;
+                }
+
+                if (modelPickerPending && model.Models.Count > 0)
+                {
+                    modelPickerPending = false;
+                    OpenPicker(
+                        new Picker("model", model.Models.ToList()),
+                        index => runtime.SetModel(model.Models[index]));
+                    return true;
                 }
 
                 if (changed || model.Busy)

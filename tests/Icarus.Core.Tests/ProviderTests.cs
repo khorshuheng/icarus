@@ -195,6 +195,21 @@ public class MeaiProviderTests
         await Assert.ThrowsAsync<ProviderUnsupportedException>(
             () => provider.ListModelsAsync(CancellationToken.None));
     }
+
+    [Fact]
+    public async Task Model_listing_is_delegated_to_the_lister()
+    {
+        var provider = new MeaiProvider(new MeaiProviderOptions
+        {
+            Client = FakeChatClient.Text("x"),
+            EffortStyle = EffortStyle.None,
+            ModelLister = _ => Task.FromResult<IReadOnlyList<string>>(["deepseek-v4-flash", "deepseek-chat"]),
+        });
+
+        var models = await provider.ListModelsAsync(CancellationToken.None);
+
+        Assert.Equal(["deepseek-v4-flash", "deepseek-chat"], models);
+    }
 }
 
 public class ProviderErrorsTests

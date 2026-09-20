@@ -1,6 +1,7 @@
 using Amazon;
 using Amazon.BedrockRuntime;
 using Anthropic;
+using Anthropic.Models.Models;
 using Microsoft.Extensions.AI;
 using OpenAI;
 using System.ClientModel;
@@ -67,7 +68,7 @@ public static class ProviderBuilder
             BaseUrl = config.EffectiveBaseUrl,
         };
 
-        return Wrap(client.AsIChatClient(config.Model, config.MaxTokens), config);
+        return Wrap(client.AsIChatClient(config.Model, config.MaxTokens), config, ListAnthropicModels(client));
     }
 
     /// <summary>DeepSeek is OpenAI-compatible, so it rides the official OpenAI SDK.</summary>
@@ -80,8 +81,37 @@ public static class ProviderBuilder
 
         var options = new OpenAIClientOptions { Endpoint = new Uri(config.EffectiveBaseUrl) };
         var client = new OpenAIClient(new ApiKeyCredential(config.ApiKey), options);
-        return Wrap(client.GetChatClient(config.Model).AsIChatClient(), config);
+        return Wrap(client.GetChatClient(config.Model).AsIChatClient(), config, ListOpenAiModels(client));
     }
+
+    private static Func<CancellationToken, Task<IReadOnlyList<string>>> ListOpenAiModels(OpenAIClient client) =>
+        async cancellationToken =>
+        {
+            var models = await client.GetOpenAIModelClient().GetModelsAsync(cancellationToken);
+            return models.Value
+                .Select(model => model.Id)
+                .OrderBy(id => id, StringComparer.Ordinal)
+                .ToArray();
+        };
+
+    private static Func<CancellationToken, Task<IReadOnlyList<string>>> ListAnthropicModels(AnthropicClient client) =>
+        async cancellationToken =>
+        {
+            var ids = new List<string>();
+            var page = await client.Models.List(new ModelListParams(), cancellationToken);
+            while (true)
+            {
+                ids.AddRange(page.Items.Select(item => item.ID));
+                if (!page.HasNext())
+                {
+                    break;
+                }
+
+                page = await page.Next(cancellationToken);
+            }
+
+            return ids.OrderBy(id => id, StringComparer.Ordinal).ToArray();
+        };
 
     /// <summary>An actionable "no key" message, aware of keyring availability.</summary>
     public static string MissingKey(ProviderInfo provider) =>
@@ -90,7 +120,10 @@ public static class ProviderBuilder
             ? "; /login stores one in the OS keyring"
             : "; no OS keyring is available on this system");
 
-    private static IProvider Wrap(Microsoft.Extensions.AI.IChatClient client, AgentConfig config) =>
+    private static IProvider Wrap(
+        Microsoft.Extensions.AI.IChatClient client,
+        AgentConfig config,
+        Func<CancellationToken, Task<IReadOnlyList<string>>>? modelLister = null) =>
         new MeaiProvider(new MeaiProviderOptions
         {
             Client = client,
@@ -98,5 +131,6 @@ public static class ProviderBuilder
             MaxOutputTokens = config.MaxTokens,
             Temperature = config.Temperature,
             MaxRetries = config.MaxRetries,
+            ModelLister = modelLister,
         });
 }
