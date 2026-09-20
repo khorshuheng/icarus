@@ -33,7 +33,7 @@ public class ConfigTests
         Assert.Equal(2, config.MaxRetries);
         Assert.Equal(32_000 - 4_096, config.MaxContextTokens);
         Assert.Equal(10, config.SessionRetention);
-        Assert.Equal("dark", config.ThemeName);
+        Assert.Equal("dark", config.Theme.Name);
     }
 
     [Fact]

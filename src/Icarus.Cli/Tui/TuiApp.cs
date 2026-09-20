@@ -22,11 +22,15 @@ public static class TuiApp
 {
     private static readonly string[] Spinner = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
 
+    private static readonly string[] EffortLevels = ["off", "minimal", "low", "medium", "high"];
+
     public static int Run(AgentRuntime runtime, SessionStore sessions, string? initialPrompt)
     {
         var model = new UiModel(runtime.State);
         var spinnerFrame = 0;
         string? savedPath = null;
+        Picker? picker = null;
+        Action<int>? pickerApply = null;
 
         Application.Init();
         try
@@ -83,7 +87,37 @@ public static class TuiApp
                 footer.Text =
                     $" {spinner}{model.State.Provider}/{model.State.Model} · effort {model.State.Effort.Name()} "
                     + $"· {model.State.Workspace} · tokens {tokens} · turns {model.Turns}";
+                if (picker is not null)
+                {
+                    footer.Text = " " + picker.Hint();
+                }
+
                 footer.SetNeedsDraw();
+            }
+
+            void OpenPicker(Picker next, Action<int> apply)
+            {
+                picker = next;
+                pickerApply = apply;
+                input.Enabled = false;
+                Refresh();
+            }
+
+            void ClosePicker()
+            {
+                picker = null;
+                pickerApply = null;
+                input.Enabled = true;
+                input.SetFocus();
+                Refresh();
+            }
+
+            void ApplyPicker()
+            {
+                var chosen = picker!.Selected;
+                var apply = pickerApply;
+                ClosePicker();
+                apply?.Invoke(chosen);
             }
 
             void Submit()
@@ -134,13 +168,21 @@ public static class TuiApp
                             "  ", runtime.ToolListing.Select(t => t.Name)));
                         break;
                     case SlashCommandKind.Resume:
-                        Resume();
+                        OpenResumePicker();
                         break;
                     case SlashCommandKind.Model when command.Argument.Length > 0:
                         runtime.SetModel(command.Argument);
                         break;
+                    case SlashCommandKind.Model:
+                        OpenModelPicker();
+                        break;
                     case SlashCommandKind.Provider when command.Argument.Length > 0:
                         runtime.SetProvider(command.Argument);
+                        break;
+                    case SlashCommandKind.Provider:
+                        OpenPicker(
+                            new Picker("provider", Icarus.Core.Config.Providers.All.Select(p => p.Name).ToList()),
+                            index => runtime.SetProvider(Icarus.Core.Config.Providers.All[index].Name));
                         break;
                     case SlashCommandKind.Effort when command.Argument.Length > 0:
                         if (EffortExtensions.Parse(command.Argument) is { } effort)
@@ -152,6 +194,11 @@ public static class TuiApp
                             model.PushNotice($"unknown effort '{command.Argument}' (off|minimal|low|medium|high)");
                         }
 
+                        break;
+                    case SlashCommandKind.Effort:
+                        OpenPicker(
+                            new Picker("effort", EffortLevels),
+                            index => runtime.SetEffort(EffortExtensions.Parse(EffortLevels[index])!.Value));
                         break;
                     case SlashCommandKind.Workspace when command.Argument.Length > 0:
                         runtime.SwitchWorkspace(command.Argument);
@@ -165,7 +212,20 @@ public static class TuiApp
                 }
             }
 
-            void Resume()
+            void OpenModelPicker()
+            {
+                var models = runtime.Models;
+                if (models.Count == 0)
+                {
+                    runtime.ListModels();
+                    model.PushNotice("no models available; type /model <name> or provider listing may be unsupported");
+                    return;
+                }
+
+                OpenPicker(new Picker("model", models.ToList()), index => runtime.SetModel(models[index]));
+            }
+
+            void OpenResumePicker()
             {
                 var summaries = sessions.ListSessions(runtime.WorkspaceRoot);
                 if (summaries.Count == 0)
@@ -174,14 +234,44 @@ public static class TuiApp
                     return;
                 }
 
-                var history = sessions.LoadAt(summaries[0].Path);
-                runtime.ReplaceHistory(history);
-                model.LoadHistory(history);
-                model.PushNotice($"resumed session {summaries[0].Id}");
+                OpenPicker(
+                    new Picker("resume", summaries.Select(s => $"{s.Id}  {s.CreatedAt:yyyy-MM-dd HH:mm}").ToList()),
+                    index =>
+                    {
+                        var history = sessions.LoadAt(summaries[index].Path);
+                        runtime.ReplaceHistory(history);
+                        model.LoadHistory(history);
+                        model.PushNotice($"resumed session {summaries[index].Id}");
+                    });
             }
 
             Application.KeyDown += (_, key) =>
             {
+                if (picker is not null)
+                {
+                    switch (key.KeyCode)
+                    {
+                        case KeyCode.CursorUp:
+                            picker.MoveUp();
+                            break;
+                        case KeyCode.CursorDown:
+                            picker.MoveDown();
+                            break;
+                        case KeyCode.Enter:
+                            ApplyPicker();
+                            break;
+                        case KeyCode.Esc:
+                            ClosePicker();
+                            break;
+                        default:
+                            return;
+                    }
+
+                    key.Handled = true;
+                    Refresh();
+                    return;
+                }
+
                 switch (key.KeyCode)
                 {
                     case KeyCode.Esc:

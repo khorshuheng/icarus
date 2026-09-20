@@ -1,6 +1,8 @@
 using System.Globalization;
+using Icarus.Core.Theme;
 using Tomlyn;
 using Tomlyn.Model;
+using ThemeType = Icarus.Core.Theme.Theme;
 
 namespace Icarus.Core.Config;
 
@@ -57,6 +59,10 @@ public static class ConfigLoader
                 + "--api-key, the provider environment variable, or the OS keyring");
         }
 
+        var theme = root.TryGetValue("theme", out var themeValue) && themeValue is TomlTable themeTable
+            ? ThemePartial.FromToml(themeTable)
+            : null;
+
         return new PartialConfig
         {
             Provider = Str(root, "provider"),
@@ -73,7 +79,8 @@ public static class ConfigLoader
             MaxContextTokens = Int(root, "max_context_tokens"),
             SessionRetention = Int(root, "session_retention"),
             Workspace = Str(root, "workspace"),
-            ThemeName = PartialConfig.ThemeNameFrom(root),
+            Theme = theme,
+            ThemeName = theme?.Name,
         };
     }
 
@@ -104,6 +111,11 @@ public static class ConfigLoader
 
         var workspace = merged.Workspace is { Length: > 0 } ws ? ws : defaultWorkspace;
 
+        var themeName = merged.ThemeName ?? ThemeType.Detect().Name;
+        var theme = ThemeType.Builtin(themeName)
+            ?? throw new ConfigException($"unknown theme '{themeName}' (supported: dark, light)");
+        theme = theme.WithOverrides(merged.Theme);
+
         var config = new Config
         {
             Provider = provider,
@@ -121,7 +133,7 @@ public static class ConfigLoader
             MaxRetries = merged.MaxRetries ?? 2,
             MaxContextTokens = merged.MaxContextTokens ?? (32_000 - 4_096),
             SessionRetention = merged.SessionRetention ?? 10,
-            ThemeName = merged.ThemeName ?? "dark",
+            Theme = theme,
         };
 
         Validate(config);

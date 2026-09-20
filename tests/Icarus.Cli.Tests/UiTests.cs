@@ -181,6 +181,37 @@ public class TranscriptScrollTests
     }
 }
 
+public class PickerTests
+{
+    [Fact]
+    public void Cycles_through_items()
+    {
+        var picker = new Picker("effort", ["off", "low", "high"]);
+
+        Assert.Equal("off", picker.Current);
+        picker.MoveUp();
+        Assert.Equal("high", picker.Current);
+        picker.MoveDown();
+        Assert.Equal("off", picker.Current);
+        picker.Select(1);
+        Assert.Equal("low", picker.Accept());
+    }
+
+    [Fact]
+    public void Clamps_selection_and_handles_empty()
+    {
+        var picker = new Picker("model", ["a", "b"], selected: 5);
+        Assert.Equal("b", picker.Current);
+
+        var empty = new Picker("provider", []);
+        Assert.True(empty.IsEmpty);
+        Assert.Null(empty.Current);
+        Assert.Equal(string.Empty, empty.Accept());
+        empty.MoveDown();
+        Assert.True(empty.IsEmpty);
+    }
+}
+
 public class UiModelTests
 {
     private static UiModel NewModel() =>

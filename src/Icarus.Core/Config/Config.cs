@@ -1,3 +1,6 @@
+using Icarus.Core.Theme;
+using ThemeType = Icarus.Core.Theme.Theme;
+
 namespace Icarus.Core.Config;
 
 /// <summary>A configuration problem that should fail fast with a clear message.</summary>
@@ -56,8 +59,8 @@ public sealed record Config
     /// <summary>Sessions kept per workspace; <c>0</c> disables pruning.</summary>
     public int SessionRetention { get; init; } = 10;
 
-    /// <summary>The requested theme preset name (resolved by ICARUS-108).</summary>
-    public string ThemeName { get; init; } = "dark";
+    /// <summary>The resolved TUI theme (ICARUS-108).</summary>
+    public ThemeType Theme { get; init; } = ThemeType.Dark;
 
     /// <summary>The effective base URL (override, else the provider preset).</summary>
     public string EffectiveBaseUrl => BaseUrl ?? Provider.PresetBaseUrl;

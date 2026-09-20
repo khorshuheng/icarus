@@ -1,4 +1,4 @@
-using Tomlyn.Model;
+using Icarus.Core.Theme;
 
 namespace Icarus.Core.Config;
 
@@ -25,7 +25,10 @@ public sealed record PartialConfig
     public int? SessionRetention { get; init; }
     public string? Workspace { get; init; }
 
-    /// <summary>The <c>[theme]</c> preset name (per-token overrides land with ICARUS-108).</summary>
+    /// <summary>The <c>[theme]</c> table (ICARUS-108).</summary>
+    public ThemePartial? Theme { get; init; }
+
+    /// <summary>The <c>[theme]</c> preset name from a flag.</summary>
     public string? ThemeName { get; init; }
 
     /// <summary>
@@ -48,18 +51,7 @@ public sealed record PartialConfig
         MaxContextTokens = higher.MaxContextTokens ?? MaxContextTokens,
         SessionRetention = higher.SessionRetention ?? SessionRetention,
         Workspace = higher.Workspace ?? Workspace,
+        Theme = higher.Theme ?? Theme,
         ThemeName = higher.ThemeName ?? ThemeName,
     };
-
-    /// <summary>
-    /// Parse the <c>[theme]</c> table's <c>name</c> key. The full theme layer
-    /// (tokens, vars, overrides) is ICARUS-108.
-    /// </summary>
-    public static string? ThemeNameFrom(TomlTable root) =>
-        root.TryGetValue("theme", out var theme) && theme is TomlTable table
-            ? Str(table, "name")
-            : null;
-
-    private static string? Str(TomlTable table, string key) =>
-        table.TryGetValue(key, out var value) ? value?.ToString() : null;
 }
