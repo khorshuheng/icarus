@@ -17,6 +17,8 @@
     <!-- ICARUS-107: TUI + display-width-aware caret. -->
     <PackageReference Include="Terminal.Gui" Version="2.5.0" />
     <PackageReference Include="Wcwidth" Version="4.0.1" />
+    <!-- ICARUS-109: CommonMark rendering. -->
+    <PackageReference Include="Markdig" Version="1.3.2" />
   </ItemGroup>
 
 </Project>

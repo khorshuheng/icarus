@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json.Nodes;
+using Icarus.Cli.Markdown;
 using Icarus.Core.Provider;
 using Icarus.Core.Runtime;
 
@@ -37,10 +38,16 @@ public sealed class UiModel(RuntimeState initial)
     public bool Busy => State.Busy;
 
     /// <summary>Everything to render, including the live streaming buffers.</summary>
-    public IReadOnlyList<TranscriptLine> Render()
+    public IReadOnlyList<TranscriptLine> Render(int width = 100)
     {
         var lines = new List<TranscriptLine>(Transcript.Count + 2);
-        lines.AddRange(Transcript);
+        foreach (var line in Transcript)
+        {
+            lines.Add(line.Role == TranscriptRole.Assistant
+                ? line with { Text = MarkdownText.ToText(line.Text, width) }
+                : line);
+        }
+
         if (_thinking.Length > 0)
         {
             lines.Add(new TranscriptLine(TranscriptRole.Thinking, _thinking.ToString()));
@@ -48,7 +55,7 @@ public sealed class UiModel(RuntimeState initial)
 
         if (_assistant.Length > 0)
         {
-            lines.Add(new TranscriptLine(TranscriptRole.Assistant, _assistant.ToString()));
+            lines.Add(new TranscriptLine(TranscriptRole.Assistant, MarkdownText.ToText(_assistant.ToString(), width)));
         }
 
         return lines;

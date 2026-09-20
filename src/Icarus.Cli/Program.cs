@@ -6,6 +6,7 @@ using Icarus.Core.Provider;
 using Icarus.Core.Providers;
 using Icarus.Core.Runtime;
 using Icarus.Core.Session;
+using Icarus.Core.Skills;
 using Icarus.Core.Tools;
 using Icarus.Core.Workspaces;
 
@@ -91,6 +92,12 @@ public static class Program
         var runtime = new AgentRuntime(
             config, provider, tools, workspace, ProviderBuilder.Build, ProviderBuilder.ResolveKey);
         runtime.SetInteractive(true); // a human is present: no iteration cap
+
+        // ICARUS-109: catalogue skills in the system prompt.
+        var skills = SkillCatalog.Discover(workspace);
+        runtime.Skills = skills.Select(s => new RuntimeSkill(s.Name, s.Description, s.Path)).ToArray();
+        runtime.SystemPromptDecorator = prompt => SkillCatalog.WithCatalog(prompt, skills);
+
         _ = runtime.Start();
 
         return TuiApp.Run(runtime, sessions, prompt);

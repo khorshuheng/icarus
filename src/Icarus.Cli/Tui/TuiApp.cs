@@ -72,8 +72,9 @@ public static class TuiApp
 
             void Refresh()
             {
+                var width = transcript.Viewport.Width > 20 ? transcript.Viewport.Width : 80;
                 var builder = new StringBuilder();
-                foreach (var line in model.Render())
+                foreach (var line in model.Render(width))
                 {
                     builder.Append(line.Text).Append('\n');
                 }
@@ -167,6 +168,14 @@ public static class TuiApp
                         model.PushNotice(string.Join(
                             "  ", runtime.ToolListing.Select(t => t.Name)));
                         break;
+                    case SlashCommandKind.Skills:
+                        model.PushNotice(runtime.Skills.Count == 0
+                            ? "no skills discovered"
+                            : string.Join("\n", runtime.Skills.Select(s => $"{s.Name} — {s.Description}")));
+                        break;
+                    case SlashCommandKind.Skill when command.Argument.Length > 0:
+                        LoadSkill(command.Argument);
+                        break;
                     case SlashCommandKind.Resume:
                         OpenResumePicker();
                         break;
@@ -209,6 +218,39 @@ public static class TuiApp
                     default:
                         model.PushNotice($"usage: /{command.Kind.ToString().ToLowerInvariant()} {ArgumentHint(command.Kind)}");
                         break;
+                }
+            }
+
+            void LoadSkill(string name)
+            {
+                var skill = runtime.Skills.FirstOrDefault(s => s.Name == name);
+                if (skill is null)
+                {
+                    model.PushNotice($"unknown skill '{name}' (see /skills)");
+                    return;
+                }
+
+                string body;
+                try
+                {
+                    body = File.ReadAllText(skill.Path);
+                }
+                catch (IOException error)
+                {
+                    model.PushNotice($"could not read skill '{name}': {error.Message}");
+                    return;
+                }
+
+                var message = $"Follow these instructions:\n\n{body}";
+                model.PushUser($"/skill {name}");
+                if (model.Busy)
+                {
+                    model.PushNotice("(skill queued as steer)");
+                    runtime.Steer(message);
+                }
+                else
+                {
+                    runtime.Prompt(message);
                 }
             }
 
