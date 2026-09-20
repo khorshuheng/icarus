@@ -25,4 +25,15 @@ public class ArchitectureTests
         Assert.DoesNotContain("Spectre.Console", CoreReferences);
         Assert.DoesNotContain("Consolonia", CoreReferences);
     }
+
+    [Fact]
+    public void Core_uses_only_official_provider_clients()
+    {
+        // The official AWS SDK and Anthropic SDK, and no community wrappers.
+        Assert.Contains("AWSSDK.BedrockRuntime", CoreReferences);
+        Assert.Contains("Anthropic", CoreReferences);
+        Assert.DoesNotContain("Anthropic.SDK", CoreReferences);
+        Assert.DoesNotContain("Anthropic.Extensions.AI", CoreReferences);
+        Assert.DoesNotContain("SemanticKernel", CoreReferences);
+    }
 }
