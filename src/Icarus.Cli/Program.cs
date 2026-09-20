@@ -100,7 +100,7 @@ public static class Program
 
         _ = runtime.Start();
 
-        return TuiApp.Run(runtime, sessions, prompt);
+        return TuiApp.Run(runtime, sessions, prompt, config.Theme);
     }
 
     private const string Usage = """

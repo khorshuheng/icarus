@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text;
 using Icarus.Cli.Ui;
 using Icarus.Core.Credentials;
@@ -10,6 +11,7 @@ using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using CredentialResolver = Icarus.Core.Credentials.Credentials;
+using ThemeType = Icarus.Core.Theme.Theme;
 
 namespace Icarus.Cli.Tui;
 
@@ -26,7 +28,7 @@ public static class TuiApp
 
     private static readonly string[] EffortLevels = ["off", "minimal", "low", "medium", "high"];
 
-    public static int Run(AgentRuntime runtime, SessionStore sessions, string? initialPrompt)
+    public static int Run(AgentRuntime runtime, SessionStore sessions, string? initialPrompt, ThemeType theme)
     {
         var model = new UiModel(runtime.State);
         var spinnerFrame = 0;
@@ -69,6 +71,15 @@ public static class TuiApp
                 Width = Dim.Fill(),
                 Height = Dim.Fill(),
             };
+
+            // ICARUS-108: apply the resolved theme so the UI is not left on
+            // Terminal.Gui's low-contrast default scheme.
+            var scheme = ThemeMap.ToScheme(theme);
+            window.SetScheme(scheme);
+            transcript.SetScheme(scheme);
+            input.SetScheme(scheme);
+            footer.SetScheme(scheme);
+
             window.Add(transcript);
             window.Add(input);
             window.Add(footer);
@@ -395,27 +406,35 @@ public static class TuiApp
 
             input.Accepted += (_, _) => Submit();
 
-            Application.AddTimeout(TimeSpan.FromMilliseconds(100), () =>
-            {
-                spinnerFrame++;
-                if (model.Busy)
-                {
-                    footer.SetNeedsDraw();
-                }
-
-                return true;
-            });
-
+            // Events are produced on the runtime worker thread and consumed on
+            // the UI thread only: the pump just enqueues, the timer drains. This
+            // avoids touching Terminal.Gui off-thread (which deadlocked when
+            // events arrived before Application.Run started the UI loop).
+            var pending = new ConcurrentQueue<Event>();
             _ = Task.Run(async () =>
             {
                 await foreach (var @event in runtime.Events.ReadAllAsync())
                 {
-                    Application.Invoke(() =>
-                    {
-                        model.Apply(@event);
-                        Refresh();
-                    });
+                    pending.Enqueue(@event);
                 }
+            });
+
+            Application.AddTimeout(TimeSpan.FromMilliseconds(50), () =>
+            {
+                spinnerFrame++;
+                var changed = false;
+                while (pending.TryDequeue(out var @event))
+                {
+                    model.Apply(@event);
+                    changed = true;
+                }
+
+                if (changed || model.Busy)
+                {
+                    Refresh();
+                }
+
+                return true;
             });
 
             Refresh();
