@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Icarus.Cli/Icarus.Cli.csproj" />
+    <Project Path="src/Icarus.Core/Icarus.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Icarus.Cli.Tests/Icarus.Cli.Tests.csproj" />
+    <Project Path="tests/Icarus.Core.Tests/Icarus.Core.Tests.csproj" />
+  </Folder>
+</Solution>

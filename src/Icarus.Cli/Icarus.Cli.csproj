@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>Icarus.Cli</RootNamespace>
+    <AssemblyName>icarus</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Description>The ICARUS TUI frontend.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Icarus.Core\Icarus.Core.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,16 @@
+## .NET / ICARUS
+bin/
+obj/
+*.user
+*.suo
+.vs/
+.vscode/
+.idea/
+TestResults/
+*.nupkg
+*.snupkg
+artifacts/
+publish/
+
+## OS
+.DS_Store

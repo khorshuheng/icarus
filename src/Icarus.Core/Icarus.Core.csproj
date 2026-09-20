@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <RootNamespace>Icarus.Core</RootNamespace>
+    <AssemblyName>Icarus.Core</AssemblyName>
+    <IsPackable>false</IsPackable>
+    <Description>The ICARUS agent engine: runtime, tools, providers, config, session and skills. Terminal-free.</Description>
+  </PropertyGroup>
+
+</Project>
