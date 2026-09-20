@@ -5,13 +5,16 @@ using Icarus.Core.Credentials;
 using Icarus.Core.Provider;
 using Icarus.Core.Runtime;
 using Icarus.Core.Session;
+using Icarus.Core.Theme;
 using Terminal.Gui.App;
 using Terminal.Gui.Drivers;
+using Terminal.Gui.Drawing;
 using Terminal.Gui.Input;
 using Terminal.Gui.ViewBase;
 using Terminal.Gui.Views;
 using CredentialResolver = Icarus.Core.Credentials.Credentials;
 using ThemeType = Icarus.Core.Theme.Theme;
+using TgAttribute = Terminal.Gui.Drawing.Attribute;
 
 namespace Icarus.Cli.Tui;
 
@@ -50,6 +53,7 @@ public static class TuiApp
                 ReadOnly = true,
                 WordWrap = true,
                 ScrollBars = true,
+                CanFocus = false, // never steal focus from the input line
             };
 
             var input = new TextField
@@ -92,17 +96,32 @@ public static class TuiApp
             window.Add(transcript);
             window.Add(input);
             window.Add(footer);
+            input.SetFocus();
 
             void Refresh()
             {
                 var width = transcript.Viewport.Width > 20 ? transcript.Viewport.Width : 80;
-                var builder = new StringBuilder();
+
+                // ICARUS-108/139: build attributed cells so each role (user,
+                // assistant, thinking, tool, notice) is visually distinct. The
+                // read-only TextView keeps wrapping, scrolling and selection.
+                var rows = new List<List<Cell>>();
                 foreach (var line in model.Render(width))
                 {
-                    builder.Append(line.Text).Append('\n');
+                    var attribute = RoleAttribute(line.Role);
+                    foreach (var physical in line.Text.Split('\n'))
+                    {
+                        var cells = new List<Cell>(physical.Length);
+                        foreach (var rune in physical.EnumerateRunes())
+                        {
+                            cells.Add(new Cell(attribute, false, rune.ToString()));
+                        }
+
+                        rows.Add(cells);
+                    }
                 }
 
-                transcript.Text = builder.ToString();
+                transcript.Load(rows);
                 transcript.MoveEnd();
                 transcript.SetNeedsDraw();
 
@@ -118,6 +137,15 @@ public static class TuiApp
 
                 footer.SetNeedsDraw();
             }
+
+            TgAttribute RoleAttribute(TranscriptRole role) => ThemeMap.ToAttribute(theme[role switch
+            {
+                TranscriptRole.User => ThemeToken.User,
+                TranscriptRole.Assistant => ThemeToken.Assistant,
+                TranscriptRole.Thinking => ThemeToken.Thinking,
+                TranscriptRole.Tool => ThemeToken.Tool,
+                _ => ThemeToken.Notice,
+            }]);
 
             void OpenPicker(Picker next, Action<int> apply)
             {
@@ -510,7 +538,8 @@ public static class TuiApp
     }
 
     private static string HelpText() =>
-        "commands: " + string.Join(", ", SlashCommands.All.Select(s => "/" + s.Name));
+        "commands: " + string.Join(", ", SlashCommands.All.Select(s => "/" + s.Name))
+        + "  ·  keys: Enter send · Esc/Ctrl-C abort while busy, quit at prompt · PgUp/PgDn/↑↓ scroll";
 
     private static string ArgumentHint(SlashCommandKind kind) => kind switch
     {
