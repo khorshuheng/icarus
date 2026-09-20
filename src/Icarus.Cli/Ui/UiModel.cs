@@ -43,14 +43,17 @@ public sealed class UiModel(RuntimeState initial)
         var lines = new List<TranscriptLine>(Transcript.Count + 2);
         foreach (var line in Transcript)
         {
-            lines.Add(line.Role == TranscriptRole.Assistant
-                ? line with { Text = MarkdownText.ToText(line.Text, width) }
-                : line);
+            lines.Add(line.Role switch
+            {
+                TranscriptRole.Assistant => line with { Text = MarkdownText.ToText(line.Text, width) },
+                TranscriptRole.Thinking => line with { Text = "✻ " + line.Text },
+                _ => line,
+            });
         }
 
         if (_thinking.Length > 0)
         {
-            lines.Add(new TranscriptLine(TranscriptRole.Thinking, _thinking.ToString()));
+            lines.Add(new TranscriptLine(TranscriptRole.Thinking, "✻ " + _thinking.ToString()));
         }
 
         if (_assistant.Length > 0)

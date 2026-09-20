@@ -286,7 +286,9 @@ public sealed class Theme
 
         Set(ThemeToken.User, ThemeColor.Indexed(light ? 4 : 6));
         Set(ThemeToken.Assistant, ThemeColor.Indexed(light ? 0 : 7));
-        Set(ThemeToken.Thinking, ThemeColor.Indexed(8), ThemeTextStyle.Italic);
+        // Thinking must be clearly distinct from the answer: "dark gray" was too
+        // close to the assistant colour (and italic is not always rendered).
+        Set(ThemeToken.Thinking, ThemeColor.Indexed(light ? 6 : 5), ThemeTextStyle.Italic);
         Set(ThemeToken.Tool, ThemeColor.Indexed(8));
         Set(ThemeToken.ToolOk, ThemeColor.Indexed(8));
         Set(ThemeToken.ToolErr, ThemeColor.Indexed(8));
