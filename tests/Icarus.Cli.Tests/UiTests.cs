@@ -1,10 +1,7 @@
 using System.Text.Json.Nodes;
-using Icarus.Cli.Tui;
 using Icarus.Cli.Ui;
 using Icarus.Core.Provider;
 using Icarus.Core.Runtime;
-using Terminal.Gui.Drawing;
-using Terminal.Gui.Views;
 
 namespace Icarus.Cli.Tests;
 
@@ -181,41 +178,6 @@ public class TranscriptScrollTests
 
         scroll.JumpToTop();
         Assert.Equal(0, scroll.Resolve(20, 10));
-    }
-}
-
-public class SlashSuggestionGeneratorTests
-{
-    private static AutocompleteContext Context(string line) =>
-        new(line.Select(ch => new Cell(null, false, ch.ToString())).ToList(), line.Length, false);
-
-    [Fact]
-    public void Suggests_matching_commands_for_a_slash_prefix()
-    {
-        var suggestions = new SlashSuggestionGenerator().GenerateSuggestions(Context("/sk")).ToList();
-
-        Assert.Contains(suggestions, s => s.Replacement == "/skills ");
-        Assert.Contains(suggestions, s => s.Replacement == "/skill ");
-        Assert.All(suggestions, s => Assert.Equal(3, s.Remove));
-    }
-
-    [Fact]
-    public void Suggests_nothing_without_a_slash_or_after_a_space()
-    {
-        var generator = new SlashSuggestionGenerator();
-
-        Assert.Empty(generator.GenerateSuggestions(Context("hello")));
-        Assert.Empty(generator.GenerateSuggestions(Context("/skill foo")));
-        Assert.Empty(generator.GenerateSuggestions(Context("")));
-    }
-
-    [Fact]
-    public void Treats_whitespace_as_a_word_boundary()
-    {
-        var generator = new SlashSuggestionGenerator();
-
-        Assert.False(generator.IsWordChar(" "));
-        Assert.True(generator.IsWordChar("a"));
     }
 }
 

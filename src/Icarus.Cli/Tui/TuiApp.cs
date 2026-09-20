@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text;
 using Icarus.Cli.Ui;
 using Icarus.Core.Credentials;
 using Icarus.Core.Provider;
@@ -21,9 +20,9 @@ namespace Icarus.Cli.Tui;
 /// <summary>
 /// The Terminal.Gui shell (ICARUS-107): a client of <see cref="AgentRuntime"/>
 /// that renders the terminal-free <see cref="UiModel"/>. It never owns the
-/// agent loop. Editing and scrolling use Terminal.Gui's TextView/TextField for
-/// native behaviour; the pure models remain the tested source of truth for
-/// parsing, event folding and scroll semantics.
+/// agent loop. The transcript is a read-only <c>TextView</c> (attributed cells
+/// per role); the input is a <c>TextField</c>; slash completion and the command
+/// pickers use <see cref="ListOverlay"/>, an overlay the shell draws itself.
 /// </summary>
 public static class TuiApp
 {
@@ -36,10 +35,13 @@ public static class TuiApp
         var model = new UiModel(runtime.State);
         var spinnerFrame = 0;
         string? savedPath = null;
-        Picker? picker = null;
-        Action<int>? pickerApply = null;
         var loginMode = false;
         var modelPickerPending = false;
+        var dropdownMatches = new List<CommandSpec>();
+        Action<int>? overlayApply = null;
+        var overlayModal = false;
+        var lastInput = string.Empty;
+        var refocusPending = false;
 
         Application.Init();
         try
@@ -70,6 +72,8 @@ public static class TuiApp
                 Width = Dim.Fill(),
             };
 
+            var overlay = new ListOverlay();
+
             var window = new Window
             {
                 Title = "icarus",
@@ -84,27 +88,34 @@ public static class TuiApp
             transcript.SetScheme(scheme);
             input.SetScheme(scheme);
             footer.SetScheme(scheme);
-
-            // ICARUS-108: a live slash-command dropdown while typing `/token`.
-            input.Autocomplete = new TextFieldAutocomplete
-            {
-                SuggestionGenerator = new SlashSuggestionGenerator(),
-                MaxHeight = 8,
-                Scheme = scheme,
-            };
+            overlay.Configure(
+                ThemeMap.ToAttribute(theme[ThemeToken.Assistant]),
+                ThemeMap.ToAttribute(theme[ThemeToken.Selection]),
+                ThemeMap.ToAttribute(theme[ThemeToken.Border]),
+                ThemeMap.ToAttribute(theme[ThemeToken.Title]));
 
             window.Add(transcript);
             window.Add(input);
             window.Add(footer);
-            input.SetFocus();
+            window.Add(overlay);
+            FocusInput();
+
+            void FocusInput()
+            {
+                input.Enabled = true;
+                input.Secret = loginMode;
+                window.SetFocus();
+                input.SetFocus();
+                window.SetNeedsDraw();
+            }
 
             void Refresh()
             {
                 var width = transcript.Viewport.Width > 20 ? transcript.Viewport.Width : 80;
 
-                // ICARUS-108/139: build attributed cells so each role (user,
-                // assistant, thinking, tool, notice) is visually distinct. The
-                // read-only TextView keeps wrapping, scrolling and selection.
+                // ICARUS-108/139: attributed cells so each role (user, assistant,
+                // thinking, tool, notice) is visually distinct, while retaining
+                // TextView wrapping, scrolling and selection.
                 var rows = new List<List<Cell>>();
                 foreach (var line in model.Render(width))
                 {
@@ -130,11 +141,6 @@ public static class TuiApp
                 footer.Text =
                     $" {spinner}{model.State.Provider}/{model.State.Model} · effort {model.State.Effort.Name()} "
                     + $"· {model.State.Workspace} · tokens {tokens} · turns {model.Turns}";
-                if (picker is not null)
-                {
-                    footer.Text = " " + picker.Hint();
-                }
-
                 footer.SetNeedsDraw();
             }
 
@@ -147,35 +153,87 @@ public static class TuiApp
                 _ => ThemeToken.Notice,
             }]);
 
-            void OpenPicker(Picker next, Action<int> apply)
+            void OpenList(string title, IReadOnlyList<string> items, Action<int> apply, bool modal)
             {
-                picker = next;
-                pickerApply = apply;
-                input.Enabled = false;
+                if (items.Count == 0)
+                {
+                    overlay.Close();
+                    return;
+                }
+
+                overlayApply = apply;
+                overlayModal = modal;
+                overlay.Open(title, items, modal);
+                if (modal)
+                {
+                    input.Enabled = false;
+                }
+            }
+
+            void CloseOverlay()
+            {
+                overlay.Close();
+                overlayApply = null;
+                overlayModal = false;
+                FocusInput();
+                refocusPending = true; // re-apply on the UI loop, not mid-key-event
+            }
+
+            void AcceptOverlay()
+            {
+                var index = overlay.Selected;
+                var apply = overlayApply;
+                CloseOverlay();
+                apply?.Invoke(index);
+                lastInput = input.Value ?? string.Empty;
+                UpdateCompletions();
                 Refresh();
             }
 
-            void ClosePicker()
+            void UpdateCompletions()
             {
-                picker = null;
-                pickerApply = null;
-                input.Enabled = true;
-                input.SetFocus();
-                Refresh();
-            }
+                if (overlayModal || loginMode)
+                {
+                    return;
+                }
 
-            void ApplyPicker()
-            {
-                var chosen = picker!.Selected;
-                var apply = pickerApply;
-                ClosePicker();
-                apply?.Invoke(chosen);
+                var value = input.Value ?? string.Empty;
+                if (value.StartsWith('/') && !value.Contains(' '))
+                {
+                    var matches = SlashCommands.Complete(value).ToList();
+                    if (matches.Count > 0)
+                    {
+                        dropdownMatches = matches;
+                        OpenList(
+                            "commands",
+                            matches.Select(FormatCommand).ToList(),
+                            index =>
+                            {
+                                input.Value = "/" + dropdownMatches[index].Name + " ";
+                                FocusInput();
+                            },
+                            modal: false);
+                        return;
+                    }
+                }
+
+                if (overlay.IsOpen)
+                {
+                    overlay.Close();
+                }
             }
 
             void Submit()
             {
+                if (overlay.IsOpen)
+                {
+                    AcceptOverlay();
+                    return;
+                }
+
                 var line = (input.Value ?? string.Empty).Trim();
                 input.Value = string.Empty;
+                lastInput = string.Empty;
 
                 if (loginMode)
                 {
@@ -198,6 +256,7 @@ public static class TuiApp
                         }
                     }
 
+                    FocusInput();
                     Refresh();
                     return;
                 }
@@ -205,32 +264,6 @@ public static class TuiApp
                 if (line.Length == 0)
                 {
                     return;
-                }
-
-                // Accept a unique command prefix on Enter even if the popup was
-                // dismissed (e.g. `/mod` → `/model `).
-                if (line.StartsWith('/') && !line.Contains(' '))
-                {
-                    var name = line[1..];
-                    var exact = SlashCommands.All.Any(s =>
-                        s.Name == name || s.Aliases.Contains(name, StringComparer.Ordinal));
-                    if (!exact)
-                    {
-                        var matches = SlashCommands.Complete(line);
-                        if (matches.Count == 1)
-                        {
-                            input.Value = "/" + matches[0].Name + " ";
-                            Refresh();
-                            return;
-                        }
-
-                        if (matches.Count > 1)
-                        {
-                            model.PushNotice("commands: " + string.Join(", ", matches.Select(m => "/" + m.Name)));
-                            Refresh();
-                            return;
-                        }
-                    }
                 }
 
                 switch (SlashCommands.Parse(line))
@@ -262,7 +295,6 @@ public static class TuiApp
                     case SlashCommandKind.Login:
                         loginMode = true;
                         input.Secret = true;
-                        input.SetFocus();
                         model.PushNotice(
                             $"paste the API key for provider '{runtime.ProviderInfo.Name}' and press Enter (Esc cancels)");
                         break;
@@ -275,8 +307,7 @@ public static class TuiApp
                         Application.RequestStop(window);
                         break;
                     case SlashCommandKind.Tools:
-                        model.PushNotice(string.Join(
-                            "  ", runtime.ToolListing.Select(t => t.Name)));
+                        model.PushNotice(string.Join("  ", runtime.ToolListing.Select(t => t.Name)));
                         break;
                     case SlashCommandKind.Skills:
                         model.PushNotice(runtime.Skills.Count == 0
@@ -287,7 +318,7 @@ public static class TuiApp
                         LoadSkill(command.Argument);
                         break;
                     case SlashCommandKind.Resume:
-                        OpenResumePicker();
+                        OpenResumeList();
                         break;
                     case SlashCommandKind.Model when command.Argument.Length > 0:
                         runtime.SetModel(command.Argument);
@@ -295,9 +326,7 @@ public static class TuiApp
                     case SlashCommandKind.Model:
                         if (model.Models.Count > 0)
                         {
-                            OpenPicker(
-                                new Picker("model", model.Models.ToList()),
-                                index => runtime.SetModel(model.Models[index]));
+                            OpenModelList();
                         }
                         else
                         {
@@ -311,9 +340,11 @@ public static class TuiApp
                         runtime.SetProvider(command.Argument);
                         break;
                     case SlashCommandKind.Provider:
-                        OpenPicker(
-                            new Picker("provider", Icarus.Core.Config.Providers.All.Select(p => p.Name).ToList()),
-                            index => runtime.SetProvider(Icarus.Core.Config.Providers.All[index].Name));
+                        OpenList(
+                            "provider",
+                            Icarus.Core.Config.Providers.All.Select(p => FormatProvider(p.Name)).ToList(),
+                            index => runtime.SetProvider(Icarus.Core.Config.Providers.All[index].Name),
+                            modal: true);
                         break;
                     case SlashCommandKind.Effort when command.Argument.Length > 0:
                         if (EffortExtensions.Parse(command.Argument) is { } effort)
@@ -327,9 +358,11 @@ public static class TuiApp
 
                         break;
                     case SlashCommandKind.Effort:
-                        OpenPicker(
-                            new Picker("effort", EffortLevels),
-                            index => runtime.SetEffort(EffortExtensions.Parse(EffortLevels[index])!.Value));
+                        OpenList(
+                            "effort",
+                            EffortLevels,
+                            index => runtime.SetEffort(EffortExtensions.Parse(EffortLevels[index])!.Value),
+                            modal: true);
                         break;
                     case SlashCommandKind.Workspace when command.Argument.Length > 0:
                         runtime.SwitchWorkspace(command.Argument);
@@ -341,6 +374,35 @@ public static class TuiApp
                         model.PushNotice($"usage: /{command.Kind.ToString().ToLowerInvariant()} {ArgumentHint(command.Kind)}");
                         break;
                 }
+            }
+
+            void OpenModelList() =>
+                OpenList(
+                    "model",
+                    model.Models.ToList(),
+                    index => runtime.SetModel(model.Models[index]),
+                    modal: true);
+
+            void OpenResumeList()
+            {
+                var summaries = sessions.ListSessions(runtime.WorkspaceRoot);
+                if (summaries.Count == 0)
+                {
+                    model.PushNotice("no previous session for this workspace");
+                    return;
+                }
+
+                OpenList(
+                    "resume",
+                    summaries.Select(s => $"{s.Id}  {s.CreatedAt:yyyy-MM-dd HH:mm}").ToList(),
+                    index =>
+                    {
+                        var history = sessions.LoadAt(summaries[index].Path);
+                        runtime.ReplaceHistory(history);
+                        model.LoadHistory(history);
+                        model.PushNotice($"resumed session {summaries[index].Id}");
+                    },
+                    modal: true);
             }
 
             void LoadSkill(string name)
@@ -376,28 +438,32 @@ public static class TuiApp
                 }
             }
 
-            void OpenResumePicker()
+            Application.KeyDown += (_, key) =>
             {
-                var summaries = sessions.ListSessions(runtime.WorkspaceRoot);
-                if (summaries.Count == 0)
+                if (overlay.IsOpen)
                 {
-                    model.PushNotice("no previous session for this workspace");
+                    switch (key.KeyCode)
+                    {
+                        case KeyCode.CursorUp:
+                            overlay.MoveUp();
+                            break;
+                        case KeyCode.CursorDown:
+                            overlay.MoveDown();
+                            break;
+                        case KeyCode.Enter or KeyCode.Tab:
+                            AcceptOverlay();
+                            break;
+                        case KeyCode.Esc:
+                            CloseOverlay();
+                            break;
+                        default:
+                            return; // let the input keep filtering the dropdown
+                    }
+
+                    key.Handled = true;
                     return;
                 }
 
-                OpenPicker(
-                    new Picker("resume", summaries.Select(s => $"{s.Id}  {s.CreatedAt:yyyy-MM-dd HH:mm}").ToList()),
-                    index =>
-                    {
-                        var history = sessions.LoadAt(summaries[index].Path);
-                        runtime.ReplaceHistory(history);
-                        model.LoadHistory(history);
-                        model.PushNotice($"resumed session {summaries[index].Id}");
-                    });
-            }
-
-            Application.KeyDown += (_, key) =>
-            {
                 if (loginMode)
                 {
                     if (key.KeyCode == KeyCode.Esc)
@@ -406,34 +472,10 @@ public static class TuiApp
                         input.Secret = false;
                         model.PushNotice("(login cancelled)");
                         key.Handled = true;
+                        FocusInput();
                         Refresh();
                     }
 
-                    return;
-                }
-
-                if (picker is not null)
-                {
-                    switch (key.KeyCode)
-                    {
-                        case KeyCode.CursorUp:
-                            picker.MoveUp();
-                            break;
-                        case KeyCode.CursorDown:
-                            picker.MoveDown();
-                            break;
-                        case KeyCode.Enter:
-                            ApplyPicker();
-                            break;
-                        case KeyCode.Esc:
-                            ClosePicker();
-                            break;
-                        default:
-                            return;
-                    }
-
-                    key.Handled = true;
-                    Refresh();
                     return;
                 }
 
@@ -484,6 +526,13 @@ public static class TuiApp
             Application.AddTimeout(TimeSpan.FromMilliseconds(50), () =>
             {
                 spinnerFrame++;
+
+                if (refocusPending)
+                {
+                    refocusPending = false;
+                    FocusInput();
+                }
+
                 var changed = false;
                 while (pending.TryDequeue(out var @event))
                 {
@@ -494,10 +543,14 @@ public static class TuiApp
                 if (modelPickerPending && model.Models.Count > 0)
                 {
                     modelPickerPending = false;
-                    OpenPicker(
-                        new Picker("model", model.Models.ToList()),
-                        index => runtime.SetModel(model.Models[index]));
-                    return true;
+                    OpenModelList();
+                }
+
+                var value = input.Value ?? string.Empty;
+                if (value != lastInput)
+                {
+                    lastInput = value;
+                    UpdateCompletions();
                 }
 
                 if (changed || model.Busy)
@@ -536,6 +589,12 @@ public static class TuiApp
 
         return 0;
     }
+
+    private static string FormatCommand(CommandSpec spec) =>
+        spec.ArgumentHint is null ? "/" + spec.Name : $"/{spec.Name} {spec.ArgumentHint}";
+
+    private static string FormatProvider(string name) =>
+        name == "fake" ? "fake (offline)" : name;
 
     private static string HelpText() =>
         "commands: " + string.Join(", ", SlashCommands.All.Select(s => "/" + s.Name))
