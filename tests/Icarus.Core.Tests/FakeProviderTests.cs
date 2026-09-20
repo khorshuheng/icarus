@@ -6,7 +6,7 @@ namespace Icarus.Core.Tests;
 public class FakeProviderTests
 {
     private static readonly JsonNode EmptyEffort = new JsonObject();
-    private static readonly IReadOnlyList<JsonNode> NoTools = [];
+    private static readonly IReadOnlyList<ToolDefinition> NoTools = [];
 
     [Fact]
     public async Task Streams_text_deltas_and_returns_the_completion()

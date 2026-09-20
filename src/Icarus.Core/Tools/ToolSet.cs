@@ -1,5 +1,6 @@
 using System.Text.Json.Nodes;
 using AgentConfig = Icarus.Core.Config.Config;
+using Icarus.Core.Provider;
 using Icarus.Core.Workspaces;
 
 namespace Icarus.Core.Tools;
@@ -27,7 +28,8 @@ public sealed class ToolSet
     ]);
 
     /// <summary>The JSON-Schema tool definitions offered to the provider.</summary>
-    public IReadOnlyList<JsonNode> Schemas => _tools.Values.Select(t => t.Schema).ToArray();
+    public IReadOnlyList<ToolDefinition> Definitions =>
+        _tools.Values.Select(t => new ToolDefinition(t.Name, t.Description, t.Schema)).ToArray();
 
     /// <summary><c>(name, description)</c> for every tool, for the <c>/tools</c> listing.</summary>
     public IReadOnlyList<(string Name, string Description)> Listing =>

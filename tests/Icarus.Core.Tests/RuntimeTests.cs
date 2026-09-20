@@ -415,7 +415,7 @@ public class RuntimeTests
 
         public async Task<Completion> CompleteAsync(
             IReadOnlyList<Message> history,
-            IReadOnlyList<JsonNode> tools,
+            IReadOnlyList<ToolDefinition> tools,
             JsonNode effortParams,
             CancellationToken cancellationToken,
             Action<StreamDelta> onDelta)
@@ -430,7 +430,7 @@ public class RuntimeTests
     {
         public Task<Completion> CompleteAsync(
             IReadOnlyList<Message> history,
-            IReadOnlyList<JsonNode> tools,
+            IReadOnlyList<ToolDefinition> tools,
             JsonNode effortParams,
             CancellationToken cancellationToken,
             Action<StreamDelta> onDelta)
@@ -444,7 +444,7 @@ public class RuntimeTests
     {
         public Task<Completion> CompleteAsync(
             IReadOnlyList<Message> history,
-            IReadOnlyList<JsonNode> tools,
+            IReadOnlyList<ToolDefinition> tools,
             JsonNode effortParams,
             CancellationToken cancellationToken,
             Action<StreamDelta> onDelta) =>
@@ -467,7 +467,7 @@ public class RuntimeTests
 
         public async Task<Completion> CompleteAsync(
             IReadOnlyList<Message> history,
-            IReadOnlyList<JsonNode> tools,
+            IReadOnlyList<ToolDefinition> tools,
             JsonNode effortParams,
             CancellationToken cancellationToken,
             Action<StreamDelta> onDelta)

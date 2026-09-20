@@ -11,7 +11,7 @@ namespace Icarus.Core.Runtime;
 /// </summary>
 public static class EffortParams
 {
-    public static JsonNode For(ProviderInfo provider, Effort effort) => provider.Effort switch
+    public static JsonNode For(EffortStyle style, Effort effort) => style switch
     {
         EffortStyle.AnthropicThinking or EffortStyle.BedrockReasoning => Thinking(effort),
         _ => new JsonObject(),

@@ -22,7 +22,7 @@ public interface IProvider
     /// <param name="onDelta">Receives streamed text/thinking fragments.</param>
     Task<Completion> CompleteAsync(
         IReadOnlyList<Message> history,
-        IReadOnlyList<JsonNode> tools,
+        IReadOnlyList<ToolDefinition> tools,
         JsonNode effortParams,
         CancellationToken cancellationToken,
         Action<StreamDelta> onDelta);

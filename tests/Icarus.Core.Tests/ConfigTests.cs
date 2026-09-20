@@ -22,7 +22,7 @@ public class ConfigTests
     {
         var config = ConfigLoader.Resolve("/tmp/ws", new PartialConfig { Model = "m" }, new PartialConfig(), null);
 
-        Assert.Equal(Providers.Default, config.Provider);
+        Assert.Equal(Icarus.Core.Config.Providers.Default, config.Provider);
         Assert.Equal("/tmp/ws", config.Workspace);
         Assert.Equal(0.7f, config.Temperature);
         Assert.Equal(30, config.MaxIterations);

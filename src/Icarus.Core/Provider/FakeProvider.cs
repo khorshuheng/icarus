@@ -38,7 +38,7 @@ public sealed class FakeProvider : IProvider
     /// <inheritdoc />
     public Task<Completion> CompleteAsync(
         IReadOnlyList<Message> history,
-        IReadOnlyList<JsonNode> tools,
+        IReadOnlyList<ToolDefinition> tools,
         JsonNode effortParams,
         CancellationToken cancellationToken,
         Action<StreamDelta> onDelta)

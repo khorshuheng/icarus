@@ -3,6 +3,8 @@ using System.Text.Json.Nodes;
 using System.Threading.Channels;
 using Icarus.Core.Config;
 using Icarus.Core.Provider;
+using Icarus.Core.Providers;
+using ProviderRegistry = Icarus.Core.Config.Providers;
 using Icarus.Core.Tools;
 using Icarus.Core.Workspaces;
 using AgentConfig = Icarus.Core.Config.Config;
@@ -395,8 +397,9 @@ public sealed class AgentRuntime
             Completion completion;
             try
             {
-                var effort = EffortParams.For(_providerInfo, State.Effort);
-                completion = await _provider.CompleteAsync(history, _tools.Schemas, effort, turnCts.Token, delta =>
+                var effort = EffortParams.For(
+                    EffortCapability.Resolve(_providerInfo, State.Model), State.Effort);
+                completion = await _provider.CompleteAsync(history, _tools.Definitions, effort, turnCts.Token, delta =>
                 {
                     if (delta.IsThinking)
                     {
@@ -599,10 +602,10 @@ public sealed class AgentRuntime
 
     private async Task SwitchProviderAsync(string name)
     {
-        var info = Providers.ByName(name);
+        var info = ProviderRegistry.ByName(name);
         if (info is null)
         {
-            Emit(new ErrorEvent($"unknown provider '{name}' (supported: {Providers.SupportedNames})"));
+            Emit(new ErrorEvent($"unknown provider '{name}' (supported: {ProviderRegistry.SupportedNames})"));
             return;
         }
 
