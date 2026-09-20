@@ -7,4 +7,9 @@
     <Description>The ICARUS agent engine: runtime, tools, providers, config, session and skills. Terminal-free.</Description>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- ICARUS-105: TOML config. -->
+    <PackageReference Include="Tomlyn" Version="2.10.1" />
+  </ItemGroup>
+
 </Project>
